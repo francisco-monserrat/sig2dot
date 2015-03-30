@@ -348,12 +348,27 @@ for my $id (@names)
 
 for my $owner (sort keys %sigs)
 {
- print "{ ";
-  for my $id (@{$sigs{$owner}})
+  foreach my $id (@{$sigs{$owner}})
   {
+    print "{ ";
     print "\"$id\" ";
+    print "} -> \"$owner\"";
+
+	if(grep { $_ eq $owner } @{$sigs{$id}})
+	{
+		print " [dir=both] \n";
+		my @newsigs;
+		foreach my $sig (@{$sigs{$id}})
+		{ # Since we've now drawn the line, remove the sig on the other side
+			push (@newsigs, $sig) unless ($sig eq $owner);
+		}
+		$sigs{$id} = \@newsigs;
+	}
+	else
+	{
+	  print "\n";
+	}
   }
-  print "} -> \"$owner\"\n";
 }
 
 print "}\n";
