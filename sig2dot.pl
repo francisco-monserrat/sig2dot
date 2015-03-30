@@ -339,7 +339,7 @@ for my $id (@names)
 
     my ($hue,$saturation,$value) = rgb2hsv($red,$green,$blue);
     printf "//%d %d $red,$green,$blue\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
-    print "\"$id\" [fillcolor=\"$hue,$saturation,$value\",label=\"$name{$id}\"]\n";
+    print "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id}\"]\n";
   } else {
     print "\"$id\" [label=\"$name{$id}\"]\n";
   }
