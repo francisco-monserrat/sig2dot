@@ -44,9 +44,6 @@
 # -v  print version
 # -q  be quiet
 #
-# -t "title" change the title of the graph
-# -m "string" move generate different dots files based on the string, plotting the graph since the creation of#  the first key to the last signature, default interval : 1 month
-#
 # Changes:
 #
 # v0.9 2000-09-14 19:20  strip trailing whitespace from $id more cleanly
@@ -75,36 +72,17 @@
 # further changes are documented in debian/changelog
 
 use strict;
-use Getopt::Long ;
 
 my $version = "0.35";
 
 my $chartchar = "*";
 my $renderdate = "";
-my ( $color ) ;
+my ($stats, $color, $all, $not_found, $revokestr);
 
-
-my %key_creation_date ; # Hash for the movie mode (when a key is created) key --> creation_date YYYY-MM-DD
-my %key_signing_date ;  # Hash for the movie mode (when a key signed other key) signer:signed-> YYYY-MM-DD
-my %dates ;	# hash for the movie mode (store all the dates)
-my $first="20480000" ;  # first & last creation date
-my $last= "19800000" ;
-my $prefix ="";
-my $title_size=60 ;
+use Getopt::Std;
 my %opt;
-my $ver="" ;
-my $help="" ;
-my $all ="" ;
-my $quiet="0" ;
-my $black ="" ;
-my $stats="" ;
-my $revokestr="[revoked]" ;
-my $title="PGP Keyring signatures" ;
-my $not_found="[user id not found]" ;
-my $date ;
-my $seq =""  ;
-my $movie ;
-my $countsig = "0" ;
+getopts('d:u:r:s:bahqv', \%opt);
+
 sub version {
   print <<EOT;
 sig2dot $version
@@ -113,75 +91,61 @@ Copyright (c) 2005 Christoph Berg <cb\@df7cb.de>
 EOT
 }
 
-my $res= GetOptions (
-	"help" => \$help ,
-        "all"  => \$all,
-	"version" => \$ver,
-	"quiet" => \$quiet,
-	"black" => \$black,
-	"revoked=s" => \$revokestr,
-	"stats=s" => \$stats,
-	"user-id=s" =>\$not_found,
-	"title=s" => \$title,
-	"movie=s" => \$movie,
-	"date=s" => \$date,
-	"sequence" => \$seq,
-	"tsize=s" => \$title_size,
-	"countsig" => \$countsig 
-) ;	
-
-if ($help) {
+if ($opt{h}) {
   version();
   print <<EOT;
 gpg --list-sigs | $0 [-abdhqsuv] > sigs.dot
---all            Graph all keys, even if they do not have a signature
---black          Black and white / do not colorize.
---date YYYY-MM-DD   Render graph as it appeared on date.
---help              Print this help and exit.
---quiet              Be quiet.
---revoqued sting        key-is-revoked string (default: "[revoked").
---stats stats.html   Produces statistics file with number of signatures per node.
---userid string       user-id-not-found string (default: "[user id not found]").
---version              Print version and exit.
---title TITLE	Tittle of the graph (default "PGP keyring signatures").
---movie prefix	Generate different prefix-YYYY-MM-DD , with the different PGP view (also change title).
---tsize number	Title Size 
---countsig	Put also the signature count in the Labels 
-
+-a              Graph all keys, even if they do not have a signature
+-b              Black and white / do not colorize.
+-d YYYY-MM-DD   Render graph as it appeared on date.
+-h              Print this help and exit.
+-q              Be quiet.
+-r sting        key-is-revoked string (default: "[revoked").
+-s stats.html   Produces statistics file with number of signatures per node.
+-u string       user-id-not-found string (default: "[user id not found]").
+-v              Print version and exit.
 EOT
   exit 0;
 }
-
-
-if ($ver ne "") {
+if ($opt{v}) {
   version();
   exit 0;
 }
 
-if ($date ne "" ) { 
-  $renderdate = $date; 
+if ($opt{d}) { 
+  $renderdate = $opt{d}; 
   print STDERR "Printing from date: $renderdate.\n";
   $renderdate =~ s/\D+//g;
 }
-if ($stats ne "" ) {  
+if ($opt{s}) { 
+  $stats = $opt{s}; 
   print STDERR "Print statistics to $stats.\n";
 }
-
-if ($black ne "")  
+if ($opt{b}) 
 { 
   $color = 0; 
-  print STDERR "Black and White.\n" unless $quiet;
+  print STDERR "Black and White.\n" unless $opt{q};
 } else { 
   $color = 1; 
-  print STDERR "Color.\n" unless $quiet;
+  print STDERR "Color.\n" unless $opt{q};
+}
+if ($opt{a}) {
+  $all = 1;
+} else {
+  $all = 0;
 }
 
-if ($movie ne "" ) {
-	$prefix = $movie  ;
-	}
+if ($opt{u}) {
+  $not_found = lc $opt{u};
+} else {
+  $not_found = "[user id not found]"; # this changed from gpg 1.2 -> 1.4
+}
 
-
-## THis is the parsing & load of the signing information & Key info
+if ($opt{r}) {
+  $revokestr = lc $opt{r};
+} else {
+  $revokestr = "[revoked"; # this changed from gpg 1.2 -> 1.4
+}
 
 my ($owner, %name, %revlist, %sigstmp, %signedbytmp, @names, %revs);
 
@@ -217,8 +181,7 @@ while (my $line = <>)
     $date =~ tr/-//d;
     if ($type eq "pub" or $renderdate eq "" or $date <= $renderdate)
     {
-
-      print STDERR "Using: $line\n" unless $quiet;
+      print STDERR "Using: $line\n" unless $opt{q};
       # strip trailing whitespace more cleanly:
       $name =~ s/\s+$//g;
 
@@ -229,10 +192,6 @@ while (my $line = <>)
       {
         $id = (split('/',$id))[1];
         $owner = $id; 
-	$key_creation_date{$id} =$date ;
-	$dates{$date}++ ;
-	if ($date < $first) {$first= $date ; }
-	if ($date > $last ) {$last =$date ; }
       } 
 
       # remove comment field
@@ -261,11 +220,6 @@ while (my $line = <>)
 	if ($all or $id ne $owner) {
 	  push (@names,$id,$owner);
 	}
-	$dates{$date} ++ ;
-	$key_signing_date{"$owner:$id"} =$date ;
-	if ($date < $first) {$first= $date ; }
-	if ($date > $last ) {$last =$date ; }
- 
       }
       if ($type eq "rev" and lc $name ne $not_found)
       {
@@ -281,37 +235,6 @@ while (my $line = <>)
     print STDERR "Skipping due to regex: $line\n" if $line ne "";
   }
 }
-
-### OK This is the "Graph generation
-
-foreach my $k (keys %key_creation_date) {
-	print STDERR "Key $k created on $key_creation_date{$k}\n" ;
-}
-my $hash_count = keys %dates ;
-print STDERR "There is $hash_count dates!! \n" ;
-print STDERR "First date =$first last date=$last\n" ;
-print STDERR "Prefix is $prefix\n" ;
-
-my $filename="" ;
-my $dat="" ;
-my $count=1;
-
-if ($prefix eq "") { do_graph($filename,$dat) ; }
-	else {
-	foreach $dat (sort keys %dates) {
-		print STDERR "Doing graph for date $dat ..\n" ;
-		if ($seq ne "") {
-			$filename =  "$prefix" . "_"  . sprintf "%05d" , $count++ ;
-			}
-		else { $filename = "$prefix" . "_$dat" ; }
-		do_graph($filename, $dat) ;
-	}
-
-}
-
-sub do_graph {
-	my $filename=$_[0] ;
-	my $date = $_[1] ;
 
 my (%sigs, %signedby);
 
@@ -333,17 +256,7 @@ for my $id (sort {$sigstmp{$a} <=> $sigstmp{$b}} keys %sigstmp) {
   }
 }
 
-my $text=$title ;
-
-if ($filename ne "") 
-	{
-	 $text .= " " . $date ; 
-	 open(OUTPUT , '>', "$filename.dot") ;
-	}
-	else  { *OUTPUT = *STDOUT; ; }
-
-			
-print OUTPUT "digraph  {\nlabelloc= \"t\";\nlabel=\"$text \";\nfontsize=\"$title_size\";\noverlap=scale\nsplines=true\nsep=.1\n";
+print "digraph \"debian-keyring\" {\noverlap=scale\nsplines=true\nsep=.1\n";
 
 my %saw;
 @saw{@names} = ();
@@ -389,8 +302,7 @@ for my $owner (sort {$signedby{$a} <=> $signedby{$b}} keys %signedby)
     }
   }
 }
-print OUTPUT "//$maxratio\n";
-
+print "//$maxratio\n";
 
 if ($stats) {
     open (STATS,">$stats");
@@ -405,7 +317,7 @@ if ($stats) {
     close STATS;
 }
 
-print OUTPUT "node [style=filled]\n";
+print "node [style=filled]\n";
 for my $id (@names)
 {
   if ((not exists $sigcount{$id}) and (not exists $signedbycount{$id}) and not $all) {
@@ -426,61 +338,51 @@ for my $id (@names)
     }
 
     my ($hue,$saturation,$value) = rgb2hsv($red,$green,$blue);
-    printf OUTPUT  "//%d %d $red,$green,$blue\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
-    if ($countsig =="0" ) {
-    	print  OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id}\"";
-	}
-    else {
-	printf OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0 ;
-	}
+    printf "//%d %d $red,$green,$blue\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
+    printf "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
   } else {
-     if ($countsig =="0") { 
-    	print OUTPUT "\"$id\" [label=\"$name{$id}\"";
-	}
-      else {
-	    printf "\"$id\" [label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
-	}
-	
+    printf "\"$id\" [label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
   }
-# Check if we are in movie mode and need to add the style="invis" ...
-  if ($date < $key_creation_date{$id} ) { print OUTPUT " style=\"invis\" " ; } 
-  print OUTPUT "]\n" ;
-
 }
 #print "node [style=solid]\n";
 
-
 for my $owner (sort keys %sigs)
 {
-
-my $sig_print="" ;
-my $sig_invis="" ;
-
- for my $id (@{$sigs{$owner}})
+  foreach my $id (@{$sigs{$owner}})
   {
-     $sig_invis .=  "\"$id\" " if (exists($key_signing_date{"$owner:$id"}) && ($date <  $key_signing_date{"$owner:$id"})) ;
-     $sig_print .=  "\"$id\" " if (exists($key_signing_date{"$owner:$id"}) && ($date >= $key_signing_date{"$owner:$id"})) ;
-    }
+    print "{ ";
+    print "\"$id\" ";
+    print "} -> \"$owner\"";
 
-
-  if ($sig_print ne "") { print OUTPUT "{ $sig_print } -> \"$owner\"\n" ; }
-  if ($sig_invis ne "") { print OUTPUT "{ $sig_invis } -> \"$owner\" [style=invis]\n" ; }
+	if(grep { $_ eq $owner } @{$sigs{$id}})
+	{
+		print " [dir=both] \n";
+		my @newsigs;
+		foreach my $sig (@{$sigs{$id}})
+		{ # Since we've now drawn the line, remove the sig on the other side
+			push (@newsigs, $sig) unless ($sig eq $owner);
+		}
+		$sigs{$id} = \@newsigs;
+	}
+	else
+	{
+	  print "\n";
+	}
+  }
 }
 
-  print OUTPUT "}\n";
+print "}\n";
 
+#  Converts rgb to hsv.  All numbers are within range 0 to 1
+#  from http://twiki.org/cgi-bin/view/Codev/WebMap
+sub rgb2hsv {
+    my ($r, $g ,$b) = @_;
+    my $max = maxof($r, maxof($g, $b));
+    my $min = minof($r, minof($g, $b));
+    my $v = $max;
+    my ($s, $h);
 
-}
-  #  Converts rgb to hsv.  All numbers are within range 0 to 1
-  #  from http://twiki.org/cgi-bin/view/Codev/WebMap
-  sub rgb2hsv {
-      my ($r, $g ,$b) = @_;
-      my $max = maxof($r, maxof($g, $b));
-      my $min = minof($r, minof($g, $b));
-      my $v = $max;
-      my ($s, $h);
-
-      if ($max > 0.0) {
+    if ($max > 0.0) {
         $s = ($max - $min) / $max;
     } else {
         $s = 0;
