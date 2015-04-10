@@ -455,14 +455,29 @@ for my $owner (sort keys %sigs)
 
 my $sig_print="" ;
 my $sig_invis="" ;
+my $sig_double="" ;
+#my %dont_draw ;
 
  for my $id (@{$sigs{$owner}})
   {
      $sig_invis .=  "\"$id\" " if (exists($key_signing_date{"$owner:$id"}) && ($date <  $key_signing_date{"$owner:$id"})) ;
-     $sig_print .=  "\"$id\" " if (exists($key_signing_date{"$owner:$id"}) && ($date >= $key_signing_date{"$owner:$id"})) ;
+
+     if (exists($key_signing_date{"$owner:$id"}) && ($date >= $key_signing_date{"$owner:$id"})) {
+##	if (exists($key_signing_date{"$id:$owner"}) && ($date >= $key_signing_date{"$id:$owner"}) ) {
+## OK draw birectional lines "two times", need to be fixed (perhaps not grouping the elements
+##  && !(exists($dont_draw{"$id:$owner"})) && !(exists($dont_draw{"$owner:$id"}) )){
+##	 $sig_double .= "\"$id\"" ; 
+##	$dont_draw{"$owner:$id"} = 1 ;
+##	$dont_draw{"$id:$owner"} = 1 ;
+
+#	}
+#	else { 
+	$sig_print .= "\"$id\"" ;
+#	}
     }
 
-
+}
+  if ($sig_double ne ""){ print OUTPUT "{ $sig_double } -> \"$owner\" [dir=both]\n" ; }
   if ($sig_print ne "") { print OUTPUT "{ $sig_print } -> \"$owner\"\n" ; }
   if ($sig_invis ne "") { print OUTPUT "{ $sig_invis } -> \"$owner\" [style=invis]\n" ; }
 }
