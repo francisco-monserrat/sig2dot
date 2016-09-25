@@ -75,6 +75,7 @@
 # further changes are documented in debian/changelog
 
 use strict;
+use warnings ;
 use Getopt::Long ;
 
 my $version = "0.35";
@@ -90,7 +91,7 @@ my %dates ;	# hash for the movie mode (store all the dates)
 my $first="20480000" ;  # first & last creation date
 my $last= "19800000" ;
 my $prefix ="";
-my $title_size=60 ;
+my $title_size=60 ,
 my %opt;
 my $ver="" ;
 my $help="" ;
@@ -101,10 +102,22 @@ my $stats="" ;
 my $revokestr="[revoked]" ;
 my $title="PGP Keyring signatures" ;
 my $not_found="[user id not found]" ;
-my $date ;
+my $date="" ;
 my $seq =""  ;
-my $movie ;
+my $movie="";
 my $countsig = "0" ;
+my $allinvis ;
+
+my $debug=0 ;
+
+sub debug{
+
+ my $lin ; 
+  if ($debug) {
+ foreach $lin  (@_) { print STDERR  "Debug : $lin" ; }
+}
+}
+
 sub version {
   print <<EOT;
 sig2dot $version
@@ -116,6 +129,7 @@ EOT
 my $res= GetOptions (
 	"help" => \$help ,
         "all"  => \$all,
+	"allinvis" =>\$allinvis,
 	"version" => \$ver,
 	"quiet" => \$quiet,
 	"black" => \$black,
@@ -126,6 +140,7 @@ my $res= GetOptions (
 	"movie=s" => \$movie,
 	"date=s" => \$date,
 	"sequence" => \$seq,
+	"debug" => \$debug,
 	"tsize=s" => \$title_size,
 	"countsig" => \$countsig 
 ) ;	
@@ -147,11 +162,16 @@ gpg --list-sigs | $0 [-abdhqsuv] > sigs.dot
 --movie prefix	Generate different prefix-YYYY-MM-DD , with the different PGP view (also change title).
 --tsize number	Title Size 
 --countsig	Put also the signature count in the Labels 
-
+--debug  Generate some debug output to stderr 
+--all include   all the keys including the ones without signature
+--allinvis include all the keys, but put an "invis" tag in the keys without signature 
 EOT
   exit 0;
 }
 
+# Allinvis include "all" 
+
+$all = 1 if $allinvis ; 
 
 if ($ver ne "") {
   version();
@@ -160,20 +180,20 @@ if ($ver ne "") {
 
 if ($date ne "" ) { 
   $renderdate = $date; 
-  print STDERR "Printing from date: $renderdate.\n";
+  debug   "Printing from date: $renderdate.\n" ;
   $renderdate =~ s/\D+//g;
 }
 if ($stats ne "" ) {  
-  print STDERR "Print statistics to $stats.\n";
+  debug "Print statistics to $stats.\n";
 }
 
 if ($black ne "")  
 { 
   $color = 0; 
-  print STDERR "Black and White.\n" unless $quiet;
+  debug ("Black and White.\n")   unless $quiet;
 } else { 
   $color = 1; 
-  print STDERR "Color.\n" unless $quiet;
+  debug  "Color.\n" unless $quiet;
 }
 
 if ($movie ne "" ) {
@@ -218,7 +238,7 @@ while (my $line = <>)
     if ($type eq "pub" or $renderdate eq "" or $date <= $renderdate)
     {
 
-      print STDERR "Using: $line\n" unless $quiet;
+      debug "Using: $line\n" unless $quiet;
       # strip trailing whitespace more cleanly:
       $name =~ s/\s+$//g;
 
@@ -275,31 +295,31 @@ while (my $line = <>)
 	}
       }
     } else {
-      print STDERR "Skipping due to date: $line\n";
+      debug  "Skipping due to date: $line\n";
     }
   } else {
-    print STDERR "Skipping due to regex: $line\n" if $line ne "";
+    debug "Skipping due to regex: $line\n" if $line ne "";
   }
 }
 
 ### OK This is the "Graph generation
 
 foreach my $k (keys %key_creation_date) {
-	print STDERR "Key $k created on $key_creation_date{$k}\n" ;
+	debug "Key $k created on $key_creation_date{$k}\n" ;
 }
 my $hash_count = keys %dates ;
-print STDERR "There is $hash_count dates!! \n" ;
-print STDERR "First date =$first last date=$last\n" ;
-print STDERR "Prefix is $prefix\n" ;
+debug  "There is $hash_count dates!! \n" ;
+debug  "First date =$first last date=$last\n" ;
+debug  "Prefix is $prefix\n" ;
 
 my $filename="" ;
-my $dat="" ;
+my $dat= $last ;
 my $count=1;
 
 if ($prefix eq "") { do_graph($filename,$dat) ; }
 	else {
 	foreach $dat (sort keys %dates) {
-		print STDERR "Doing graph for date $dat ..\n" ;
+		debug "Doing graph for date $dat ..\n" ;
 		if ($seq ne "") {
 			$filename =  "$prefix" . "_"  . sprintf "%05d" , $count++ ;
 			}
@@ -313,6 +333,7 @@ sub do_graph {
 	my $filename=$_[0] ;
 	my $date = $_[1] ;
 
+ debug "doing graph with output filename =$filename and date = $date\n" ;
 my (%sigs, %signedby);
 
 for my $id (sort {$sigstmp{$a} <=> $sigstmp{$b}} keys %sigstmp) {
@@ -325,7 +346,6 @@ for my $id (sort {$sigstmp{$a} <=> $sigstmp{$b}} keys %sigstmp) {
         $revoke = 1;
       }
     }
-    #$res = $revlist{$id};
     if (($revoke == 0)) {
       push (@{$sigs{$owner}},$id);
       push (@{$signedby{$id}},$owner);
@@ -391,7 +411,9 @@ for my $owner (sort {$signedby{$a} <=> $signedby{$b}} keys %signedby)
 }
 print OUTPUT "//$maxratio\n";
 
-
+#
+# Create a stats file is this has been requested
+#
 if ($stats) {
     open (STATS,">$stats");
     print STATS "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n<html><head><title>Keyring Statistics</title></head><body><table border=1>\n";
@@ -406,6 +428,9 @@ if ($stats) {
 }
 
 print OUTPUT "node [style=filled]\n";
+
+my $style="";
+
 for my $id (@names)
 {
   if ((not exists $sigcount{$id}) and (not exists $signedbycount{$id}) and not $all) {
@@ -427,27 +452,37 @@ for my $id (@names)
 
     my ($hue,$saturation,$value) = rgb2hsv($red,$green,$blue);
     printf OUTPUT  "//%d %d $red,$green,$blue\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
+   # debug "id=$id , signedbycount = $signedbycount{$id} and signedbycount = $signedbycount{$id}\n" ;
+
+    if ( ( $allinvis)) {
+		if ( (defined ($sigcount{$id} ) and ($sigcount{$id} > 0) ) or  ( ( defined $signedbycount{$id} ) and ($signedbycount{$id} > 0)) )  {
+		   $style="" ;
+			}
+		else { $style= " style=\"invis\" " ; }
+    } 
     if ($countsig =="0" ) {
-    	print  OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id}\"";
+    	print  OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id}\" $style ]";
 	}
-    else {
-	printf OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0 ;
+    else { 
+	printf OUTPUT "\"$id\" [fillcolor=\"$hue $saturation $value\",label=\"$name{$id} (%d/%d)\" $style ]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0 ;
 	}
   } else {
      if ($countsig =="0") { 
-    	print OUTPUT "\"$id\" [label=\"$name{$id}\"";
+    	print OUTPUT "\"$id\" [label=\"$name{$id}\" $style ]";
 	}
       else {
-	    printf "\"$id\" [label=\"$name{$id} (%d/%d)\"]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
+	    printf "\"$id\" [label=\"$name{$id} (%d/%d)\" $style ]\n", $sigcount{$id} || 0, $signedbycount{$id} || 0;
 	}
 	
   }
 # Check if we are in movie mode and need to add the style="invis" ...
+#
   if ($date < $key_creation_date{$id} ) { print OUTPUT " style=\"invis\" " ; } 
-  print OUTPUT "]\n" ;
+  debug ("date= $date, id=$id , key creation_date=$key_creation_date{$id}\n" ) ;
+
+#  print OUTPUT "]\n" ;
 
 }
-#print "node [style=solid]\n";
 
 
 for my $owner (sort keys %sigs)
@@ -463,17 +498,8 @@ my $sig_double="" ;
      $sig_invis .=  "\"$id\" " if (exists($key_signing_date{"$owner:$id"}) && ($date <  $key_signing_date{"$owner:$id"})) ;
 
      if (exists($key_signing_date{"$owner:$id"}) && ($date >= $key_signing_date{"$owner:$id"})) {
-##	if (exists($key_signing_date{"$id:$owner"}) && ($date >= $key_signing_date{"$id:$owner"}) ) {
-## OK draw birectional lines "two times", need to be fixed (perhaps not grouping the elements
-##  && !(exists($dont_draw{"$id:$owner"})) && !(exists($dont_draw{"$owner:$id"}) )){
-##	 $sig_double .= "\"$id\"" ; 
-##	$dont_draw{"$owner:$id"} = 1 ;
-##	$dont_draw{"$id:$owner"} = 1 ;
-
-#	}
-#	else { 
+	
 	$sig_print .= "\"$id\"" ;
-#	}
     }
 
 }
